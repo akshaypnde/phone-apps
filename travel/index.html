@@ -1,0 +1,75 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Leipzig Travel Scout</title>
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Live weekend ideas from Leipzig</p>
+        <h1>Travel Scout</h1>
+        <p class="subhead">Find high-value trips using weather, rail/bus links, Deutschland Ticket friendliness, hidden gems, festivals and cheap-flight prompts.</p>
+      </div>
+      <div class="hero-card">
+        <span>Home base</span><strong>Leipzig Hbf</strong><small>Static app. Live data from Open-Meteo and DB-compatible transport.rest where available.</small>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel controls-panel">
+        <div class="panel-title"><span>🎛️</span><div><h2>Trip filters</h2><p>Tune your budget, time and trip mood.</p></div></div>
+        <div class="controls-grid">
+          <label>Budget per person <output id="budgetOut">€80</output><input id="budget" type="range" min="10" max="300" step="5" value="80" /></label>
+          <label>Trip length <select id="days"><option value="1">Day trip</option><option value="2" selected>Weekend</option><option value="3">Long weekend</option><option value="5">Up to 5 days</option><option value="9">Longer trip</option></select></label>
+          <label>Country scope <select id="country"><option value="all">Germany + neighbors</option><option>Germany</option><option>Czechia</option><option>Poland</option><option>Austria</option><option>Netherlands</option><option>Denmark</option><option>Belgium</option><option>Switzerland</option></select></label>
+          <label class="toggle"><input id="dticket" type="checkbox" checked /> Prioritise Deutschland Ticket</label>
+          <label class="toggle"><input id="dticketOnly" type="checkbox" /> D-Ticket only</label>
+        </div>
+        <div class="interest-row" id="interestRow" aria-label="Interests"></div>
+        <div class="action-row"><button id="refreshBtn">Refresh live recommendations</button><button id="saveBtn" class="secondary">Save shortlist</button></div>
+      </section>
+
+      <section class="status-strip" id="statusStrip">
+        <div><strong id="bestWeather">–</strong><span>best weather</span></div>
+        <div><strong id="bestValue">–</strong><span>best value</span></div>
+        <div><strong id="dticketCount">–</strong><span>D-Ticket picks</span></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title"><span>✨</span><div><h2>Recommended next trips</h2><p>Ranked locally. Weather is live; prices are estimates plus direct booking links.</p></div></div>
+        <div id="cards" class="cards"><div class="skeleton">Loading live weather…</div></div>
+      </section>
+
+      <section class="panel split">
+        <div>
+          <div class="panel-title"><span>✈️</span><div><h2>Cheap flight watch</h2><p>Use nearby airports when the budget and trip length justify it.</p></div></div>
+          <div id="flightLinks" class="link-list"></div>
+        </div>
+        <div>
+          <div class="panel-title"><span>📌</span><div><h2>Saved shortlist</h2><p>Ideas stored locally on this phone.</p></div></div>
+          <div id="shortlist" class="shortlist empty">No saved ideas yet.</div>
+        </div>
+      </section>
+
+      <section class="panel sources">
+        <h2>Data sources and limits</h2>
+        <ul>
+          <li><strong>Open-Meteo</strong> powers forecasts without an API key.</li>
+          <li><strong>transport.rest / Deutsche Bahn-compatible data</strong> is used for live rail connection checks when available.</li>
+          <li>Exact bus, rail and flight fares often require vendor booking pages, so the app shows value estimates and opens DB, FlixBus and flight-deal searches.</li>
+          <li>No text-generation service is used inside the app; ranking is deterministic scoring in the browser.</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="./src/app.js"></script>
+  <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');</script>
+</body>
+</html>

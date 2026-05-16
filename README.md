@@ -65,3 +65,8 @@ This is the easiest mobile install path because it avoids app-store distribution
 ## APK option
 
 A native Android APK can be produced by wrapping this web app with Capacitor or a Trusted Web Activity. That requires an Android build environment/signing key or a GitHub Actions workflow. The recommended first step is GitHub Pages + PWA; APK packaging can be added afterward if you still want a downloadable `.apk`.
+
+
+## Additional apps
+
+- `travel/` — Leipzig Travel Scout, a PWA for budget-aware weekend trip recommendations using Open-Meteo forecasts and DB-compatible connection lookups.
