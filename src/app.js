@@ -67,7 +67,28 @@ function bindEvents(){
   $('#notifyBtn').addEventListener('click', requestNotifications);
   $('#exportBackup').addEventListener('click', exportBackup);
   $('#importBackup').addEventListener('click', importBackup);
+  $('#refreshAppUpdate').addEventListener('click', refreshAppUpdate);
 }
+
+async function refreshAppUpdate(){
+  const snapshot = localStorage.getItem(STATE_STORAGE_KEY);
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter(key => key.startsWith('fitlog-')).map(key => caches.delete(key)));
+    }
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(reg => reg.unregister()));
+    }
+    if (snapshot && !localStorage.getItem(STATE_STORAGE_KEY)) localStorage.setItem(STATE_STORAGE_KEY, snapshot);
+    window.location.reload();
+  } catch (err) {
+    if (snapshot && !localStorage.getItem(STATE_STORAGE_KEY)) localStorage.setItem(STATE_STORAGE_KEY, snapshot);
+    alert('Could not refresh the app cache automatically. Your saved FitLog data was left untouched.');
+  }
+}
+
 function showTab(tab){ $$('.tab').forEach(s=>s.hidden=s.id!==tab); $$('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab)); }
 function renderAll(){ renderExerciseDatalist(); renderExerciseLog(); renderCalendar(); renderPlanTemplate(); renderFoodLog(); renderMacroTargets(); renderWater(); renderWarnings(); }
 function renderExerciseDatalist(){ $('#exerciseList').innerHTML=allExercises().map(e=>`<option value="${escapeHtml(e.name)}"></option>`).join(''); renderExerciseSuggestions(); }

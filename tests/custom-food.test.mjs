@@ -44,5 +44,5 @@ test('nutrition page exposes a custom food fallback form and binds it', () => {
 
 test('service worker cache is bumped for custom food update', () => {
   const sw = fs.readFileSync('sw.js', 'utf8');
-  assert.match(sw, /fitlog-v6/);
+  assert.match(sw, /fitlog-v7/);
 });
