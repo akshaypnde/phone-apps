@@ -4,14 +4,32 @@ import { parseWorkoutPlan, toISODateLocal, missedWorkoutWarning, nutritionScore,
 
 const $ = sel => document.querySelector(sel);
 const $$ = sel => [...document.querySelectorAll(sel)];
+const STATE_STORAGE_KEY = 'hfa-state';
 const state = loadState();
 let selectedPlanDayIndex = 0;
 
-function loadState(){
-  const defaults = {logs:[], workouts:{}, plans:[], activePlanId:null, foods:[], water:{}, customExercises:[], macroTargets:{protein:150, carbs:200, fats:70}};
-  try { return {...defaults, ...JSON.parse(localStorage.getItem('hfa-state')||'{}')}; } catch { return defaults; }
+function defaultState(){
+  return {schemaVersion:2, logs:[], workouts:{}, plans:[], activePlanId:null, foods:[], water:{}, customExercises:[], macroTargets:{protein:150, carbs:200, fats:70}};
 }
-function save(){ localStorage.setItem('hfa-state', JSON.stringify(state)); renderAll(); }
+function migrateState(stored={}){
+  const defaults = defaultState();
+  return {
+    ...defaults,
+    ...stored,
+    schemaVersion: 2,
+    logs: Array.isArray(stored.logs) ? stored.logs : defaults.logs,
+    workouts: stored.workouts && typeof stored.workouts === 'object' ? stored.workouts : defaults.workouts,
+    plans: Array.isArray(stored.plans) ? stored.plans : defaults.plans,
+    foods: Array.isArray(stored.foods) ? stored.foods : defaults.foods,
+    water: stored.water && typeof stored.water === 'object' ? stored.water : defaults.water,
+    customExercises: Array.isArray(stored.customExercises) ? stored.customExercises : defaults.customExercises,
+    macroTargets: {...defaults.macroTargets, ...stored.macroTargets}
+  };
+}
+function loadState(){
+  try { return migrateState(JSON.parse(localStorage.getItem(STATE_STORAGE_KEY)||'{}')); } catch { return defaultState(); }
+}
+function save(){ localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(state)); renderAll(); }
 function allExercises(){ return [...EXERCISES, ...state.customExercises.map(name=>({name, custom:true}))]; }
 function today(){ return $('#date').value || toISODateLocal(); }
 function download(name, text, type='text/plain'){
@@ -46,6 +64,8 @@ function bindEvents(){
   $('#exportNutritionAll').addEventListener('click', ()=>exportNutrition([], 'nutrition-log-all.csv'));
   $('#addWater').addEventListener('click', ()=>{ const d=$('#waterDate').value; state.water[d]=(state.water[d]||0)+(+$('#waterMl').value||250); save(); });
   $('#notifyBtn').addEventListener('click', requestNotifications);
+  $('#exportBackup').addEventListener('click', exportBackup);
+  $('#importBackup').addEventListener('click', importBackup);
 }
 function showTab(tab){ $$('.tab').forEach(s=>s.hidden=s.id!==tab); $$('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab)); }
 function renderAll(){ renderExerciseDatalist(); renderExerciseLog(); renderCalendar(); renderPlanTemplate(); renderFoodLog(); renderMacroTargets(); renderWater(); renderWarnings(); }
@@ -124,6 +144,26 @@ function renderWarnings(){ const dates=Object.keys(state.workouts).filter(d=>sta
 function requestNotifications(){ if(!('Notification' in window)) return; if(Notification.permission==='default') Notification.requestPermission(); }
 function maybeNotify(){ if(!('Notification' in window) || Notification.permission!=='granted') return; const w=missedWorkoutWarning(Object.keys(state.workouts).filter(d=>state.workouts[d])); if(w.level==='warning') new Notification('Workout gap warning', {body:w.message}); }
 setInterval(maybeNotify, 60*60*1000);
+
+function exportBackup(){
+  const snapshot = {...state, exportedAt: new Date().toISOString(), app: 'FitLog'};
+  download(`fitlog-backup-${toISODateLocal()}.json`, JSON.stringify(snapshot, null, 2), 'application/json');
+}
+async function importBackup(){
+  const file = $('#importBackupFile').files?.[0];
+  if(!file) return alert('Choose a FitLog backup JSON file first.');
+  try {
+    const parsed = JSON.parse(await file.text());
+    const restored = migrateState(parsed);
+    if(!confirm('Import this backup and replace the current local data on this phone?')) return;
+    Object.keys(state).forEach(k => delete state[k]);
+    Object.assign(state, restored);
+    save();
+    alert('Backup imported successfully.');
+  } catch(err) {
+    alert('Could not import backup: '+err.message);
+  }
+}
 function examplePlan(){ return {planName:'4-Day Strength Template', notes:'All fields except name are optional. Exercise names are case-insensitive; spaces/punctuation/minor differences are tolerated.', days:[{day:'Day 1', focus:'Lower strength', exercises:[{name:'Barbell Back Squat', sets:5, reps:'5', targetWeightKg:100, restSeconds:180, notes:'Add weight only if all reps are clean.'},{name:'Romanian deadlifts', sets:3, reps:'8-10', restSeconds:120}]},{day:'Day 2', focus:'Upper strength', exercises:[{name:'bench press', sets:5, reps:'5', restSeconds:180},{name:'DB row', sets:4, reps:'8/side', restSeconds:90}]}]}; }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 init();
