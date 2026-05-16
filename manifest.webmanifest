@@ -1,0 +1,18 @@
+{
+  "name": "FitLog \u2014 Health & Fitness Tracker",
+  "short_name": "FitLog",
+  "description": "Local-first strength, nutrition, water, and workout plan tracker.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#245a8d",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

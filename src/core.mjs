@@ -1,0 +1,115 @@
+
+export function normalizeExerciseName(name='') {
+  return String(name).toLowerCase()
+    .replace(/\b(dbs?|dumbells?|dumbbells?)\b/g, 'dumbbell')
+    .replace(/\b(bbs?|barbells?)\b/g, 'barbell')
+    .replace(/\b(ohp)\b/g, 'overheadpress')
+    .replace(/\b(rdl|rdls)\b/g, 'romaniandeadlift')
+    .replace(/\b(squats|presses|rows|curls|deadlifts|lunges|raises|extensions)\b/g, m => m.replace(/s$/, ''))
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
+}
+
+function levenshtein(a, b) {
+  const dp = Array.from({length: a.length + 1}, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+    dp[i][j] = Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+  }
+  return dp[a.length][b.length];
+}
+
+export function findExerciseMatch(input, db=[]) {
+  const q = normalizeExerciseName(input);
+  if (!q) return null;
+  let best = null, bestScore = -Infinity;
+  for (const item of db) {
+    const n = normalizeExerciseName(item.name);
+    let score = 0;
+    if (n === q) score = 100;
+    else if (n.includes(q) || q.includes(n)) score = 86 - Math.abs(n.length - q.length);
+    else {
+      const dist = levenshtein(q, n);
+      score = 80 - (dist / Math.max(q.length, n.length)) * 100;
+    }
+    if (score > bestScore) { bestScore = score; best = item; }
+  }
+  return bestScore >= 52 ? best : null;
+}
+
+export function parseWorkoutPlan(input, exerciseDb=[]) {
+  let obj;
+  if (typeof input === 'string') obj = JSON.parse(input); else obj = input;
+  if (!obj || !Array.isArray(obj.days)) throw new Error('Workout plan must be JSON with a days array');
+  return {
+    planName: obj.planName || obj.name || 'Workout Plan',
+    notes: obj.notes || '',
+    days: obj.days.map((day, dayIndex) => ({
+      day: day.day || day.name || `Day ${dayIndex + 1}`,
+      focus: day.focus || '',
+      exercises: (day.exercises || []).map((ex, exerciseIndex) => {
+        const name = ex.name || ex.exercise || '';
+        const match = findExerciseMatch(name, exerciseDb);
+        return {
+          id: cryptoRandomId(),
+          order: ex.order ?? exerciseIndex + 1,
+          inputName: name,
+          canonicalName: match?.name || name,
+          custom: !match,
+          sets: Number(ex.sets || 1),
+          reps: String(ex.reps ?? ''),
+          targetWeightKg: ex.targetWeightKg ?? ex.weightKg ?? ex.weight ?? '',
+          restSeconds: ex.restSeconds ?? ex.rest ?? '',
+          notes: ex.notes || ''
+        };
+      })
+    }))
+  };
+}
+
+export function cryptoRandomId() {
+  const c = globalThis.crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  return 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+export function toISODateLocal(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+export function missedWorkoutWarning(workoutDates=[], today=toISODateLocal()) {
+  const dates = workoutDates.map(d => new Date(d+'T00:00:00')).filter(d => !isNaN(d)).sort((a,b)=>b-a);
+  if (!dates.length) return {level:'warning', message:'No completed workout logged yet.'};
+  const now = new Date(today+'T00:00:00');
+  const gapDays = Math.floor((now - dates[0]) / 86400000);
+  if (gapDays >= 2) return {level:'warning', gapDays, message:`${gapDays} days since your last completed workout. For strength progress, try not to let gaps reach 2+ days unless your plan intentionally schedules rest.`};
+  return {level:'ok', gapDays, message:'Workout spacing looks fine.'};
+}
+
+export function nutritionScore(n={}) {
+  const calories=+n.calories||0, protein=+n.protein||0, fiber=+n.fiber||0, sugar=+n.sugar||0, sat=+n.saturatedFat||0, sodium=+n.sodium||0;
+  let score = 50;
+  score += Math.min(20, protein * 2.4) + Math.min(18, fiber * 4);
+  score -= Math.max(0, calories - 450) / 18;
+  score -= Math.max(0, sugar - 12) * 1.5;
+  score -= Math.max(0, sat - 3) * 5;
+  score -= Math.max(0, sodium - 500) / 80;
+  let label = score >= 55 ? 'good' : score >= 42 ? 'neutral' : 'warning';
+  return {score: Math.round(score), label, icon: label === 'good' ? '✅' : label === 'neutral' ? '•' : '⚠️'};
+}
+
+function csvCell(v) {
+  const s = String(v ?? '');
+  return /[",\n]/.test(s) ? `"${s.replaceAll('"','""')}"` : s;
+}
+
+export function exportExerciseLogCsv(rows=[]) {
+  const cols = ['date','exerciseName','set','reps','weight','unit','restSeconds','notes'];
+  return [cols.join(','), ...rows.map(r => cols.map(c => csvCell(r[c])).join(','))].join('\n');
+}
+
+export function exportJson(data) { return JSON.stringify(data, null, 2); }
