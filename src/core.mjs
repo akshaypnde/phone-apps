@@ -146,6 +146,37 @@ export function macroProgress(totals={}, targets={}) {
   };
 }
 
+
+export function createCustomFoodItem({name, grams, protein=0, carbs=0, fats=0, date='', id=''}) {
+  const cleanName = String(name || '').trim();
+  const qty = +grams;
+  if (!cleanName) throw new Error('Custom food name is required');
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error('Custom food quantity must be greater than zero');
+  const macroTotals = {
+    protein: Math.max(0, +protein || 0),
+    carbohydrates: Math.max(0, +carbs || 0),
+    fat: Math.max(0, +fats || 0)
+  };
+  return {
+    id,
+    date,
+    name: cleanName,
+    brand: 'Custom',
+    grams: qty,
+    servingBased: true,
+    nutrients: {
+      calories: macroCalories({protein: macroTotals.protein, carbs: macroTotals.carbohydrates, fats: macroTotals.fat}),
+      protein: macroTotals.protein,
+      carbohydrates: macroTotals.carbohydrates,
+      fat: macroTotals.fat,
+      fiber: 0,
+      sugar: 0,
+      saturatedFat: 0,
+      sodium: 0
+    }
+  };
+}
+
 export function exportNutritionLogCsv(rows=[]) {
   const cols = ['date','food','brand','grams','calories','protein','carbs','fats','sugar','fiber','saturatedFat','sodium'];
   const value = (row, col) => {

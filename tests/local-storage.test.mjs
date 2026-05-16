@@ -29,6 +29,6 @@ test('user can export and import a complete local backup', () => {
   assert.match(app, /download\(`fitlog-backup-/);
 });
 
-test('service worker cache is bumped for the persistence update', () => {
-  assert.match(sw, /const CACHE = 'fitlog-v5';/);
+test('service worker cache is at the current fitness app version', () => {
+  assert.match(sw, /const CACHE = 'fitlog-v6';/);
 });

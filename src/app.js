@@ -1,6 +1,6 @@
 
 import { EXERCISES } from './exercises.mjs';
-import { parseWorkoutPlan, toISODateLocal, missedWorkoutWarning, nutritionScore, exportExerciseLogCsv, exportNutritionLogCsv, macroCalories, macroProgress, findExerciseMatch, cryptoRandomId } from './core.mjs';
+import { parseWorkoutPlan, toISODateLocal, missedWorkoutWarning, nutritionScore, exportExerciseLogCsv, exportNutritionLogCsv, macroCalories, macroProgress, createCustomFoodItem, findExerciseMatch, cryptoRandomId } from './core.mjs';
 
 const $ = sel => document.querySelector(sel);
 const $$ = sel => [...document.querySelectorAll(sel)];
@@ -59,6 +59,7 @@ function bindEvents(){
   $('#foodSearchBtn').addEventListener('click', searchFoods);
   $('#foodQuery').addEventListener('keydown', e=>{ if(e.key==='Enter') searchFoods(); });
   $('#foodResults').addEventListener('click', addFoodFromClick);
+  $('#addCustomFood').addEventListener('click', addCustomFood);
   $('#saveMacros').addEventListener('click', saveMacroTargets);
   $('#exportNutritionToday').addEventListener('click', ()=>exportNutrition([$('#foodDate').value], `nutrition-log-${$('#foodDate').value}.csv`));
   $('#exportNutritionAll').addEventListener('click', ()=>exportNutrition([], 'nutrition-log-all.csv'));
@@ -124,10 +125,29 @@ function renderFoodResults(products){
   $('#foodResults').innerHTML=products.map((p,i)=>{ const nutrients=foodNutrients(p), s=nutritionScore(nutrients); return `<li><button data-food='${escapeHtml(JSON.stringify({name:p.product_name, brand:p.brands||'', nutrients}))}'>Log</button> ${s.icon} <b>${escapeHtml(p.product_name)}</b> <small>${escapeHtml(p.brands||'')} — per 100g: ${nutrients.calories} kcal, protein ${nutrients.protein}g, carbs ${nutrients.carbohydrates}g, fat ${nutrients.fat}g, sugar ${nutrients.sugar}g</small></li>`; }).join('') || '<li>No products found.</li>';
 }
 function addFoodFromClick(e){ if(!e.target.dataset.food) return; const f=JSON.parse(e.target.dataset.food); f.id=cryptoRandomId(); f.date=$('#foodDate').value; f.grams=+(prompt('How many grams?', '100')||100); state.foods.push(f); save(); }
+function addCustomFood(){
+  const data = {
+    id: cryptoRandomId(),
+    date: $('#foodDate').value,
+    name: $('#customFoodName').value,
+    grams: $('#customFoodGrams').value,
+    protein: $('#customFoodProtein').value,
+    carbs: $('#customFoodCarbs').value,
+    fats: $('#customFoodFats').value
+  };
+  try {
+    state.foods.push(createCustomFoodItem(data));
+    ['customFoodName','customFoodProtein','customFoodCarbs','customFoodFats'].forEach(id => $('#'+id).value = '');
+    $('#customFoodGrams').value = 100;
+    save();
+  } catch (err) {
+    alert(err.message || 'Could not add custom food.');
+  }
+}
 function renderFoodLog(){
   const d=$('#foodDate').value, foods=state.foods.filter(f=>f.date===d);
   let totals={calories:0, protein:0, carbs:0, fats:0, fiber:0, sugar:0, saturatedFat:0, sodium:0};
-  $('#foodLog').innerHTML=foods.map(f=>{ const factor=(f.grams||100)/100; const n=Object.fromEntries(Object.entries(f.nutrients).map(([k,v])=>[k,Math.round(v*factor*10)/10])); totals.calories+=n.calories||0; totals.protein+=n.protein||0; totals.carbs+=(n.carbohydrates??n.carbs)||0; totals.fats+=(n.fat??n.fats)||0; totals.fiber+=n.fiber||0; totals.sugar+=n.sugar||0; totals.saturatedFat+=n.saturatedFat||0; totals.sodium+=n.sodium||0; const s=nutritionScore(n); return `<tr><td data-label="Rating" class="food-rating">${s.icon}</td><td data-label="Food">${escapeHtml(f.name)}</td><td data-label="Amount">${f.grams}g</td><td data-label="kcal">${n.calories}</td><td data-label="Protein">${n.protein}g</td><td data-label="Carbs">${n.carbohydrates??n.carbs??0}g</td><td data-label="Fats">${n.fat??n.fats??0}g</td><td data-label="Sugar">${n.sugar}g</td><td data-label="Action"><button data-delfood="${f.id}">Delete</button></td></tr>`; }).join('') || '<tr><td colspan="9">No food logged.</td></tr>';
+  $('#foodLog').innerHTML=foods.map(f=>{ const factor=(f.grams||100)/100; const n=f.servingBased ? {...f.nutrients} : Object.fromEntries(Object.entries(f.nutrients).map(([k,v])=>[k,Math.round(v*factor*10)/10])); totals.calories+=n.calories||0; totals.protein+=n.protein||0; totals.carbs+=(n.carbohydrates??n.carbs)||0; totals.fats+=(n.fat??n.fats)||0; totals.fiber+=n.fiber||0; totals.sugar+=n.sugar||0; totals.saturatedFat+=n.saturatedFat||0; totals.sodium+=n.sodium||0; const s=nutritionScore(n); return `<tr><td data-label="Rating" class="food-rating">${s.icon}</td><td data-label="Food">${escapeHtml(f.name)}</td><td data-label="Amount">${f.grams}g</td><td data-label="kcal">${n.calories}</td><td data-label="Protein">${n.protein}g</td><td data-label="Carbs">${n.carbohydrates??n.carbs??0}g</td><td data-label="Fats">${n.fat??n.fats??0}g</td><td data-label="Sugar">${n.sugar}g</td><td data-label="Action"><button data-delfood="${f.id}">Delete</button></td></tr>`; }).join('') || '<tr><td colspan="9">No food logged.</td></tr>';
   $('#foodTotals').textContent=`Totals: ${Math.round(totals.calories)} kcal, protein ${totals.protein.toFixed(1)}g, carbs ${totals.carbs.toFixed(1)}g, fats ${totals.fats.toFixed(1)}g, fiber ${totals.fiber.toFixed(1)}g, sugar ${totals.sugar.toFixed(1)}g, sodium ${Math.round(totals.sodium)}mg.`;
   renderMacroProgress(totals);
   $('#mealIdeas').innerHTML=recommendMeals(totals).map(x=>`<li>${x}</li>`).join('');
