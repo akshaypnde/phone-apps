@@ -51,3 +51,30 @@ footer{text-align:center;padding:28px;color:#5d6b80}
 @media(max-width:380px){
   main{padding:8px}.card{padding:10px}.week,.grid{gap:2px}.day{min-height:44px;font-size:11px}.day button{font-size:10px}
 }
+
+
+/* Phone-hardening overrides: keep calendar and nutrition inside the viewport even with large Android text scaling. */
+#calendar{inline-size:100%;max-inline-size:100%;overflow:hidden;contain:inline-size}
+#calendar .week,#calendar .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;inline-size:100%;max-inline-size:100%;min-inline-size:0;overflow:hidden}
+#calendar .week b{font-size:clamp(9px,2.6vw,14px);text-align:center;min-width:0;white-space:nowrap;overflow:hidden}
+#calendar .day{position:relative;aspect-ratio:1 / 1;min-height:0;min-width:0;width:100%;padding:2px;border-radius:8px;display:block;overflow:hidden;font-size:clamp(11px,3.2vw,15px);line-height:1}
+#calendar .day span{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-weight:800;line-height:1}
+#calendar .day input{position:absolute;left:2px;top:2px;width:12px!important;height:12px!important;max-width:12px;margin:0;transform:none;z-index:1}
+#calendar .day button{position:absolute;right:2px;bottom:2px;width:18px!important;height:18px!important;min-width:0;max-width:18px;padding:0;border-radius:50%;font-size:12px;line-height:18px;text-align:center;display:block;overflow:hidden}
+.food-table{min-width:0;width:100%;table-layout:fixed}
+.food-table th,.food-table td{overflow-wrap:anywhere;word-break:break-word}
+@media(max-width:700px){
+  .food-table{display:block;min-width:0!important;width:100%!important}
+  .food-table thead{display:none}
+  #foodLog{display:block;width:100%}
+  #foodLog tr{display:grid;grid-template-columns:1fr;gap:6px;width:100%;margin:0 0 10px 0;padding:10px;border:1px solid #e2e8f2;border-radius:12px;background:#fff}
+  #foodLog td{display:grid;grid-template-columns:minmax(72px,32%) 1fr;gap:8px;align-items:start;width:100%;padding:3px 0;border:0;font-size:14px;line-height:1.25;min-width:0}
+  #foodLog td::before{content:attr(data-label);font-weight:800;color:#58677d;font-size:12px;text-transform:uppercase;letter-spacing:.02em}
+  #foodLog td.food-rating{display:flex;gap:8px;align-items:center;font-size:20px}
+  #foodLog td.food-rating::before{content:"Rating"}
+  #foodLog button{width:100%;padding:7px 10px}
+  #foodTotals,#mealIdeas{overflow-wrap:anywhere;font-size:15px;line-height:1.35}
+  #mealIdeas{padding-left:20px}
+  #calendar .week,#calendar .grid{gap:2px}
+  #calendar .day{border-radius:7px}
+}
