@@ -1,4 +1,4 @@
-const CACHE = 'fitlog-v1';
+const CACHE = 'fitlog-v2';
 const ASSETS = ['./','./index.html','./styles.css','./manifest.webmanifest','./icon.svg','./src/app.js','./src/core.mjs','./src/exercises.mjs'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS))));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))));
