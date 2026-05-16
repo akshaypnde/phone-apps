@@ -1,6 +1,6 @@
 
 import { EXERCISES } from './exercises.mjs';
-import { parseWorkoutPlan, toISODateLocal, missedWorkoutWarning, nutritionScore, exportExerciseLogCsv, findExerciseMatch, cryptoRandomId } from './core.mjs';
+import { parseWorkoutPlan, toISODateLocal, missedWorkoutWarning, nutritionScore, exportExerciseLogCsv, exportNutritionLogCsv, macroCalories, macroProgress, findExerciseMatch, cryptoRandomId } from './core.mjs';
 
 const $ = sel => document.querySelector(sel);
 const $$ = sel => [...document.querySelectorAll(sel)];
@@ -8,7 +8,7 @@ const state = loadState();
 let selectedPlanDayIndex = 0;
 
 function loadState(){
-  const defaults = {logs:[], workouts:{}, plans:[], activePlanId:null, foods:[], water:{}, customExercises:[]};
+  const defaults = {logs:[], workouts:{}, plans:[], activePlanId:null, foods:[], water:{}, customExercises:[], macroTargets:{protein:150, carbs:200, fats:70}};
   try { return {...defaults, ...JSON.parse(localStorage.getItem('hfa-state')||'{}')}; } catch { return defaults; }
 }
 function save(){ localStorage.setItem('hfa-state', JSON.stringify(state)); renderAll(); }
@@ -23,6 +23,7 @@ function init(){
   $('#foodDate').value = toISODateLocal();
   $('#waterDate').value = toISODateLocal();
   $('#planExample').textContent = JSON.stringify(examplePlan(), null, 2);
+  loadMacroInputs();
   bindEvents(); renderAll(); requestNotifications();
 }
 function bindEvents(){
@@ -34,16 +35,20 @@ function bindEvents(){
   $('#clearPlan').addEventListener('click', ()=>{ state.activePlanId=null; save(); });
   $('#planDay').addEventListener('change', e=>{ selectedPlanDayIndex=+e.target.value; renderPlanTemplate(); });
   $('#exportToday').addEventListener('click', ()=>exportLogs([today()], `exercise-log-${today()}.csv`));
+  $('#clearExerciseDay').addEventListener('click', clearExerciseDay);
   $('#exportRange').addEventListener('click', ()=>{ const dates=calendarSelectedDates(); exportLogs(dates, `exercise-log-${dates[0]||'all'}-to-${dates.at(-1)||'all'}.csv`); });
   $('#calendar').addEventListener('click', calendarClick);
   $('#foodSearchBtn').addEventListener('click', searchFoods);
   $('#foodQuery').addEventListener('keydown', e=>{ if(e.key==='Enter') searchFoods(); });
   $('#foodResults').addEventListener('click', addFoodFromClick);
+  $('#saveMacros').addEventListener('click', saveMacroTargets);
+  $('#exportNutritionToday').addEventListener('click', ()=>exportNutrition([$('#foodDate').value], `nutrition-log-${$('#foodDate').value}.csv`));
+  $('#exportNutritionAll').addEventListener('click', ()=>exportNutrition([], 'nutrition-log-all.csv'));
   $('#addWater').addEventListener('click', ()=>{ const d=$('#waterDate').value; state.water[d]=(state.water[d]||0)+(+$('#waterMl').value||250); save(); });
   $('#notifyBtn').addEventListener('click', requestNotifications);
 }
 function showTab(tab){ $$('.tab').forEach(s=>s.hidden=s.id!==tab); $$('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab)); }
-function renderAll(){ renderExerciseDatalist(); renderExerciseLog(); renderCalendar(); renderPlanTemplate(); renderFoodLog(); renderWater(); renderWarnings(); }
+function renderAll(){ renderExerciseDatalist(); renderExerciseLog(); renderCalendar(); renderPlanTemplate(); renderFoodLog(); renderMacroTargets(); renderWater(); renderWarnings(); }
 function renderExerciseDatalist(){ $('#exerciseList').innerHTML=allExercises().map(e=>`<option value="${escapeHtml(e.name)}"></option>`).join(''); renderExerciseSuggestions(); }
 function renderExerciseSuggestions(){
   const q=$('#exerciseSearch').value.trim(); const list=$('#exerciseMatches'); if(!q){ list.innerHTML=''; return; }
@@ -63,6 +68,7 @@ function renderExerciseLog(){
   $('#exerciseLog').innerHTML=rows.length? rows.map(r=>`<tr><td>${r.set}</td><td>${escapeHtml(r.exerciseName)}</td><td>${r.reps}</td><td>${r.weight} ${r.unit}</td><td>${r.restSeconds||''}</td><td>${escapeHtml(r.notes||'')}</td><td><button data-del="${r.id}">Delete</button></td></tr>`).join('') : '<tr><td colspan="7">No sets logged for this date.</td></tr>';
   $('#exerciseLog').onclick=e=>{ if(e.target.dataset.del){ state.logs=state.logs.filter(r=>r.id!==e.target.dataset.del); save(); } };
 }
+function clearExerciseDay(){ if(confirm(`Clear all exercise sets for ${today()}?`)){ state.logs = state.logs.filter(r => r.date !== today()); save(); } }
 function exportLogs(dates, filename){ const set=new Set(dates); const rows=dates.length? state.logs.filter(r=>set.has(r.date)) : state.logs; download(filename, exportExerciseLogCsv(rows), 'text/csv'); }
 function calendarSelectedDates(){ return $$('#calendar input:checked').map(x=>x.value).sort(); }
 function renderCalendar(){
@@ -93,19 +99,25 @@ async function searchFoods(){
   try { const res=await fetch(url); const data=await res.json(); renderFoodResults((data.products||[]).filter(p=>p.product_name)); }
   catch { $('#foodResults').innerHTML='<li>Food search failed. Check your connection.</li>'; }
 }
-function foodNutrients(p){ const n=p.nutriments||{}; return {calories: +(n['energy-kcal_100g']||n['energy-kcal']||0), protein:+(n.proteins_100g||0), fiber:+(n.fiber_100g||0), sugar:+(n.sugars_100g||0), saturatedFat:+(n['saturated-fat_100g']||0), sodium: Math.round(+(n.sodium_100g||0)*1000)}; }
+function foodNutrients(p){ const n=p.nutriments||{}; return {calories: +(n['energy-kcal_100g']||n['energy-kcal']||0), protein:+(n.proteins_100g||0), carbohydrates:+(n.carbohydrates_100g||0), fat:+(n.fat_100g||0), fiber:+(n.fiber_100g||0), sugar:+(n.sugars_100g||0), saturatedFat:+(n['saturated-fat_100g']||0), sodium: Math.round(+(n.sodium_100g||0)*1000)}; }
 function renderFoodResults(products){
-  $('#foodResults').innerHTML=products.map((p,i)=>{ const nutrients=foodNutrients(p), s=nutritionScore(nutrients); return `<li><button data-food='${escapeHtml(JSON.stringify({name:p.product_name, brand:p.brands||'', nutrients}))}'>Log</button> ${s.icon} <b>${escapeHtml(p.product_name)}</b> <small>${escapeHtml(p.brands||'')} — per 100g: ${nutrients.calories} kcal, protein ${nutrients.protein}g, sugar ${nutrients.sugar}g, sat fat ${nutrients.saturatedFat}g</small></li>`; }).join('') || '<li>No products found.</li>';
+  $('#foodResults').innerHTML=products.map((p,i)=>{ const nutrients=foodNutrients(p), s=nutritionScore(nutrients); return `<li><button data-food='${escapeHtml(JSON.stringify({name:p.product_name, brand:p.brands||'', nutrients}))}'>Log</button> ${s.icon} <b>${escapeHtml(p.product_name)}</b> <small>${escapeHtml(p.brands||'')} — per 100g: ${nutrients.calories} kcal, protein ${nutrients.protein}g, carbs ${nutrients.carbohydrates}g, fat ${nutrients.fat}g, sugar ${nutrients.sugar}g</small></li>`; }).join('') || '<li>No products found.</li>';
 }
 function addFoodFromClick(e){ if(!e.target.dataset.food) return; const f=JSON.parse(e.target.dataset.food); f.id=cryptoRandomId(); f.date=$('#foodDate').value; f.grams=+(prompt('How many grams?', '100')||100); state.foods.push(f); save(); }
 function renderFoodLog(){
   const d=$('#foodDate').value, foods=state.foods.filter(f=>f.date===d);
-  let totals={calories:0, protein:0, fiber:0, sugar:0, saturatedFat:0, sodium:0};
-  $('#foodLog').innerHTML=foods.map(f=>{ const factor=(f.grams||100)/100; const n=Object.fromEntries(Object.entries(f.nutrients).map(([k,v])=>[k,Math.round(v*factor*10)/10])); Object.keys(totals).forEach(k=>totals[k]+=n[k]||0); const s=nutritionScore(n); return `<tr><td data-label="Rating" class="food-rating">${s.icon}</td><td data-label="Food">${escapeHtml(f.name)}</td><td data-label="Amount">${f.grams}g</td><td data-label="kcal">${n.calories}</td><td data-label="Protein">${n.protein}g</td><td data-label="Sugar">${n.sugar}g</td><td data-label="Action"><button data-delfood="${f.id}">Delete</button></td></tr>`; }).join('') || '<tr><td colspan="7">No food logged.</td></tr>';
-  $('#foodTotals').textContent=`Totals: ${Math.round(totals.calories)} kcal, protein ${totals.protein.toFixed(1)}g, fiber ${totals.fiber.toFixed(1)}g, sugar ${totals.sugar.toFixed(1)}g, sodium ${Math.round(totals.sodium)}mg.`;
+  let totals={calories:0, protein:0, carbs:0, fats:0, fiber:0, sugar:0, saturatedFat:0, sodium:0};
+  $('#foodLog').innerHTML=foods.map(f=>{ const factor=(f.grams||100)/100; const n=Object.fromEntries(Object.entries(f.nutrients).map(([k,v])=>[k,Math.round(v*factor*10)/10])); totals.calories+=n.calories||0; totals.protein+=n.protein||0; totals.carbs+=(n.carbohydrates??n.carbs)||0; totals.fats+=(n.fat??n.fats)||0; totals.fiber+=n.fiber||0; totals.sugar+=n.sugar||0; totals.saturatedFat+=n.saturatedFat||0; totals.sodium+=n.sodium||0; const s=nutritionScore(n); return `<tr><td data-label="Rating" class="food-rating">${s.icon}</td><td data-label="Food">${escapeHtml(f.name)}</td><td data-label="Amount">${f.grams}g</td><td data-label="kcal">${n.calories}</td><td data-label="Protein">${n.protein}g</td><td data-label="Carbs">${n.carbohydrates??n.carbs??0}g</td><td data-label="Fats">${n.fat??n.fats??0}g</td><td data-label="Sugar">${n.sugar}g</td><td data-label="Action"><button data-delfood="${f.id}">Delete</button></td></tr>`; }).join('') || '<tr><td colspan="9">No food logged.</td></tr>';
+  $('#foodTotals').textContent=`Totals: ${Math.round(totals.calories)} kcal, protein ${totals.protein.toFixed(1)}g, carbs ${totals.carbs.toFixed(1)}g, fats ${totals.fats.toFixed(1)}g, fiber ${totals.fiber.toFixed(1)}g, sugar ${totals.sugar.toFixed(1)}g, sodium ${Math.round(totals.sodium)}mg.`;
+  renderMacroProgress(totals);
   $('#mealIdeas').innerHTML=recommendMeals(totals).map(x=>`<li>${x}</li>`).join('');
   $('#foodLog').onclick=e=>{ if(e.target.dataset.delfood){ state.foods=state.foods.filter(f=>f.id!==e.target.dataset.delfood); save(); }};
 }
+function loadMacroInputs(){ ['Protein','Carbs','Fats'].forEach(k=>{ const el=$(`#target${k}`); if(el) el.value=state.macroTargets[k.toLowerCase()]||0; }); renderMacroTargets(); }
+function saveMacroTargets(){ state.macroTargets={protein:+$('#targetProtein').value||0, carbs:+$('#targetCarbs').value||0, fats:+$('#targetFats').value||0}; save(); }
+function renderMacroTargets(){ if(!$('#targetCalories')) return; $('#targetCalories').textContent=`${macroCalories(state.macroTargets)} kcal/day`; }
+function renderMacroProgress(totals){ const el=$('#macroProgress'); if(!el) return; const p=macroProgress(totals, state.macroTargets); el.innerHTML=['calories','protein','carbs','fats'].map(k=>`<div class="macro-row"><span>${k}</span><progress max="100" value="${Math.min(100,p[k].percent)}"></progress><b>${p[k].consumed}/${p[k].target}${k==='calories'?' kcal':'g'}</b></div>`).join(''); renderMacroTargets(); }
+function exportNutrition(dates, filename){ const set=new Set(dates); const rows=dates.length? state.foods.filter(f=>set.has(f.date)) : state.foods; download(filename, exportNutritionLogCsv(rows), 'text/csv'); }
 function recommendMeals(t){ const ideas=[]; if(t.protein<80) ideas.push('Lean protein bowl: grilled chicken/tofu, brown rice, beans, salsa, salad.'); if(t.fiber<25) ideas.push('High-fiber option: lentil soup with vegetables or oats with berries.'); if(t.sugar>50) ideas.push('Keep the next snack low-sugar: Greek yogurt, eggs, nuts, or hummus with vegetables.'); if(!ideas.length) ideas.push('Balanced dinner: salmon or tempeh, sweet potato, and leafy greens.'); return ideas; }
 function renderWater(){ const d=$('#waterDate').value, ml=state.water[d]||0; $('#waterProgress').value=Math.min(ml,3000); $('#waterText').textContent=`${ml} / 3000 ml`; }
 function renderWarnings(){ const dates=Object.keys(state.workouts).filter(d=>state.workouts[d]); const w=missedWorkoutWarning(dates, toISODateLocal()); $('#gapWarning').className=w.level; $('#gapWarning').textContent=w.message; }

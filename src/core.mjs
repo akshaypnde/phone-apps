@@ -112,4 +112,49 @@ export function exportExerciseLogCsv(rows=[]) {
   return [cols.join(','), ...rows.map(r => cols.map(c => csvCell(r[c])).join(','))].join('\n');
 }
 
+
+export function macroCalories(targets={}) {
+  const protein = +targets.protein || 0;
+  const carbs = +targets.carbs || 0;
+  const fats = +targets.fats || 0;
+  return Math.round((protein * 4) + (carbs * 4) + (fats * 9));
+}
+
+export function macroProgress(totals={}, targets={}) {
+  const resolvedTargets = {
+    protein: +targets.protein || 0,
+    carbs: +targets.carbs || 0,
+    fats: +targets.fats || 0,
+    calories: +targets.calories || macroCalories(targets)
+  };
+  const metric = key => {
+    const consumed = Math.round((+totals[key] || 0) * 10) / 10;
+    const target = resolvedTargets[key] || 0;
+    return {
+      consumed,
+      target,
+      remaining: Math.max(0, Math.round((target - consumed) * 10) / 10),
+      percent: target ? Math.min(999, Math.round((consumed / target) * 100)) : 0
+    };
+  };
+  return {
+    targets: resolvedTargets,
+    calories: metric('calories'),
+    protein: metric('protein'),
+    carbs: metric('carbs'),
+    fats: metric('fats')
+  };
+}
+
+export function exportNutritionLogCsv(rows=[]) {
+  const cols = ['date','food','brand','grams','calories','protein','carbs','fats','sugar','fiber','saturatedFat','sodium'];
+  const value = (row, col) => {
+    if (col === 'food') return row.name;
+    if (col === 'carbs') return row.nutrients?.carbohydrates ?? row.nutrients?.carbs ?? '';
+    if (col === 'fats') return row.nutrients?.fat ?? row.nutrients?.fats ?? '';
+    return row[col] ?? row.nutrients?.[col] ?? '';
+  };
+  return [cols.join(','), ...rows.map(row => cols.map(col => csvCell(value(row, col))).join(','))].join('\n');
+}
+
 export function exportJson(data) { return JSON.stringify(data, null, 2); }
