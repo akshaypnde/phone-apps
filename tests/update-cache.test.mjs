@@ -13,9 +13,9 @@ test('fitness app provides an update refresh action that preserves local app dat
   assert.doesNotMatch(app, /localStorage\.clear\(/);
 });
 
-test('fitness service worker is network first for app shell updates and cache v7', () => {
+test('fitness service worker is network first for app shell updates and cache v8', () => {
   const sw = fs.readFileSync('sw.js', 'utf8');
-  assert.match(sw, /const CACHE = 'fitlog-v7';/);
+  assert.match(sw, /const CACHE = 'fitlog-v8';/);
   assert.match(sw, /fetch\(event\.request\)/);
   assert.match(sw, /cache\.put\(event\.request/);
   assert.match(sw, /cached/);
