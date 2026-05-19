@@ -92,6 +92,13 @@ test('nutrition page exposes barcode scanning with manual fallback', () => {
   assert.match(app, /createFoodLogItemFromProduct/);
 });
 
+test('barcode scanner has a Firefox-compatible ZXing camera fallback', () => {
+  assert.match(app, /@zxing\/browser/);
+  assert.match(app, /scanBarcodeWithZxing/);
+  assert.match(app, /BrowserMultiFormatReader/);
+  assert.match(app, /BarcodeDetector/);
+});
+
 test('professional mobile app styling tokens are present', () => {
   assert.match(css, /--accent/);
   assert.match(css, /backdrop-filter/);
