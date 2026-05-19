@@ -178,8 +178,12 @@ async function lookupBarcodeFood(rawBarcode){
 async function scanBarcodeFood(){
   const status = $('#barcodeStatus');
   const video = $('#barcodeVideo');
-  if(!('BarcodeDetector' in window) || !navigator.mediaDevices?.getUserMedia){
-    status.textContent='Camera barcode scanning is not supported in this browser. Type the barcode number and tap Lookup instead.';
+  if(!navigator.mediaDevices?.getUserMedia){
+    status.textContent='Camera access is not available in this browser. Type the barcode number and tap Lookup instead.';
+    return;
+  }
+  if(!('BarcodeDetector' in window)){
+    await scanBarcodeWithZxing();
     return;
   }
   let stream;
@@ -210,6 +214,32 @@ async function scanBarcodeFood(){
     status.textContent = err.message || 'Could not start barcode scanning.';
     stream?.getTracks().forEach(t=>t.stop());
     video.hidden = true;
+  }
+}
+async function scanBarcodeWithZxing(){
+  const status = $('#barcodeStatus');
+  const video = $('#barcodeVideo');
+  let reader;
+  try {
+    status.textContent='Loading Firefox-compatible barcode scanner…';
+    const zxing = await import('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm');
+    const { BrowserMultiFormatReader } = zxing;
+    reader = new BrowserMultiFormatReader();
+    video.hidden = false;
+    status.textContent='Point the camera at the food barcode…';
+    const result = await reader.decodeOnceFromVideoDevice(undefined, video);
+    const code = result?.getText?.() || result?.text || '';
+    if(!code) throw new Error('No barcode detected. Try better light or enter the number manually.');
+    video.hidden = true;
+    await lookupBarcodeFood(code);
+  } catch(err) {
+    status.textContent = err.message || 'Could not scan with this browser. Type the barcode number and tap Lookup instead.';
+    video.hidden = true;
+  } finally {
+    reader?.reset?.();
+    const stream = video.srcObject;
+    stream?.getTracks?.().forEach(t=>t.stop());
+    video.srcObject = null;
   }
 }
 function addCustomFood(){
