@@ -107,9 +107,63 @@ function csvCell(v) {
   return /[",\n]/.test(s) ? `"${s.replaceAll('"','""')}"` : s;
 }
 
-export function exportExerciseLogCsv(rows=[]) {
+export function exportExerciseLogCsv(rows=[], {markedWorkoutDates=[]}={}) {
   const cols = ['date','exerciseName','set','reps','weight','unit','restSeconds','notes'];
-  return [cols.join(','), ...rows.map(r => cols.map(c => csvCell(r[c])).join(','))].join('\n');
+  const datesWithLoggedSets = new Set(rows.map(r => r.date).filter(Boolean));
+  const generalRows = [...new Set(markedWorkoutDates)]
+    .filter(date => date && !datesWithLoggedSets.has(date))
+    .map(date => ({
+      date,
+      exerciseName: 'Workout completed',
+      set: '',
+      reps: '',
+      weight: '',
+      unit: '',
+      restSeconds: '',
+      notes: 'Marked complete on calendar; no sets logged'
+    }));
+  const exportRows = [...rows, ...generalRows].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  return [cols.join(','), ...exportRows.map(r => cols.map(c => csvCell(r[c])).join(','))].join('\n');
+}
+
+export function normalizeBarcode(input='') {
+  return String(input).replace(/[^0-9]/g, '');
+}
+
+export function openFoodFactsBarcodeUrl(barcode) {
+  const code = normalizeBarcode(barcode);
+  if (!code) throw new Error('Barcode is required');
+  return `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=code,product_name,brands,nutriments,image_front_thumb_url,product_quantity,serving_quantity`;
+}
+
+export function nutrientsFromOpenFoodFacts(product={}) {
+  const n = product.nutriments || {};
+  return {
+    calories: +(n['energy-kcal_100g'] ?? n['energy-kcal'] ?? 0),
+    protein: +(n.proteins_100g ?? 0),
+    carbohydrates: +(n.carbohydrates_100g ?? 0),
+    fat: +(n.fat_100g ?? 0),
+    fiber: +(n.fiber_100g ?? 0),
+    sugar: +(n.sugars_100g ?? 0),
+    saturatedFat: +(n['saturated-fat_100g'] ?? 0),
+    sodium: Math.round(+(n.sodium_100g ?? 0) * 1000)
+  };
+}
+
+export function createFoodLogItemFromProduct(product={}, {date='', grams=100, id=''}={}) {
+  const qty = +grams;
+  const name = String(product.product_name || product.generic_name || '').trim();
+  if (!name) throw new Error('Barcode product has no usable name');
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error('Food quantity must be greater than zero');
+  return {
+    id,
+    date,
+    name,
+    brand: product.brands || '',
+    barcode: normalizeBarcode(product.code || product._id || ''),
+    grams: qty,
+    nutrients: nutrientsFromOpenFoodFacts(product)
+  };
 }
 
 

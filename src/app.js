@@ -1,6 +1,6 @@
 
 import { EXERCISES } from './exercises.mjs';
-import { parseWorkoutPlan, toISODateLocal, missedWorkoutWarning, nutritionScore, exportExerciseLogCsv, exportNutritionLogCsv, macroCalories, macroProgress, createCustomFoodItem, findExerciseMatch, cryptoRandomId } from './core.mjs';
+import { parseWorkoutPlan, toISODateLocal, missedWorkoutWarning, nutritionScore, exportExerciseLogCsv, exportNutritionLogCsv, macroCalories, macroProgress, createCustomFoodItem, createFoodLogItemFromProduct, nutrientsFromOpenFoodFacts, openFoodFactsBarcodeUrl, normalizeBarcode, findExerciseMatch, cryptoRandomId } from './core.mjs';
 
 const $ = sel => document.querySelector(sel);
 const $$ = sel => [...document.querySelectorAll(sel)];
@@ -59,6 +59,9 @@ function bindEvents(){
   $('#foodSearchBtn').addEventListener('click', searchFoods);
   $('#foodQuery').addEventListener('keydown', e=>{ if(e.key==='Enter') searchFoods(); });
   $('#foodResults').addEventListener('click', addFoodFromClick);
+  $('#lookupBarcode').addEventListener('click', ()=>lookupBarcodeFood($('#barcodeInput').value));
+  $('#barcodeInput').addEventListener('keydown', e=>{ if(e.key==='Enter') lookupBarcodeFood(e.target.value); });
+  $('#scanBarcode').addEventListener('click', scanBarcodeFood);
   $('#addCustomFood').addEventListener('click', addCustomFood);
   $('#saveMacros').addEventListener('click', saveMacroTargets);
   $('#exportNutritionToday').addEventListener('click', ()=>exportNutrition([$('#foodDate').value], `nutrition-log-${$('#foodDate').value}.csv`));
@@ -111,7 +114,12 @@ function renderExerciseLog(){
   $('#exerciseLog').onclick=e=>{ if(e.target.dataset.del){ state.logs=state.logs.filter(r=>r.id!==e.target.dataset.del); save(); } };
 }
 function clearExerciseDay(){ if(confirm(`Clear all exercise sets for ${today()}?`)){ state.logs = state.logs.filter(r => r.date !== today()); save(); } }
-function exportLogs(dates, filename){ const set=new Set(dates); const rows=dates.length? state.logs.filter(r=>set.has(r.date)) : state.logs; download(filename, exportExerciseLogCsv(rows), 'text/csv'); }
+function exportLogs(dates, filename){
+  const set=new Set(dates);
+  const rows=dates.length? state.logs.filter(r=>set.has(r.date)) : state.logs;
+  const markedWorkoutDates = (dates.length ? dates : Object.keys(state.workouts)).filter(d => state.workouts[d] && (!dates.length || set.has(d)));
+  download(filename, exportExerciseLogCsv(rows, {markedWorkoutDates}), 'text/csv');
+}
 function calendarSelectedDates(){ return $$('#calendar input:checked').map(x=>x.value).sort(); }
 function renderCalendar(){
   const base=new Date(today()+'T12:00:00'); const y=base.getFullYear(), m=base.getMonth();
@@ -141,11 +149,69 @@ async function searchFoods(){
   try { const res=await fetch(url); const data=await res.json(); renderFoodResults((data.products||[]).filter(p=>p.product_name)); }
   catch { $('#foodResults').innerHTML='<li>Food search failed. Check your connection.</li>'; }
 }
-function foodNutrients(p){ const n=p.nutriments||{}; return {calories: +(n['energy-kcal_100g']||n['energy-kcal']||0), protein:+(n.proteins_100g||0), carbohydrates:+(n.carbohydrates_100g||0), fat:+(n.fat_100g||0), fiber:+(n.fiber_100g||0), sugar:+(n.sugars_100g||0), saturatedFat:+(n['saturated-fat_100g']||0), sodium: Math.round(+(n.sodium_100g||0)*1000)}; }
+function foodNutrients(p){ return nutrientsFromOpenFoodFacts(p); }
 function renderFoodResults(products){
   $('#foodResults').innerHTML=products.map((p,i)=>{ const nutrients=foodNutrients(p), s=nutritionScore(nutrients); return `<li><button data-food='${escapeHtml(JSON.stringify({name:p.product_name, brand:p.brands||'', nutrients}))}'>Log</button> ${s.icon} <b>${escapeHtml(p.product_name)}</b> <small>${escapeHtml(p.brands||'')} — per 100g: ${nutrients.calories} kcal, protein ${nutrients.protein}g, carbs ${nutrients.carbohydrates}g, fat ${nutrients.fat}g, sugar ${nutrients.sugar}g</small></li>`; }).join('') || '<li>No products found.</li>';
 }
 function addFoodFromClick(e){ if(!e.target.dataset.food) return; const f=JSON.parse(e.target.dataset.food); f.id=cryptoRandomId(); f.date=$('#foodDate').value; f.grams=+(prompt('How many grams?', '100')||100); state.foods.push(f); save(); }
+async function lookupBarcodeFood(rawBarcode){
+  const code = normalizeBarcode(rawBarcode);
+  const status = $('#barcodeStatus');
+  if(!code){ status.textContent='Enter or scan a barcode first.'; return; }
+  status.textContent='Looking up barcode in Open Food Facts…';
+  try {
+    const res = await fetch(openFoodFactsBarcodeUrl(code));
+    const data = await res.json();
+    if(!res.ok || data.status === 0 || !data.product) throw new Error('No product found for this barcode.');
+    const product = {...data.product, code: data.code || data.product.code || code};
+    const defaultQty = product.product_quantity || product.serving_quantity || 100;
+    const grams = +(prompt(`Found ${product.product_name || 'food item'}. How many grams did you eat?`, String(defaultQty)) || defaultQty);
+    const item = createFoodLogItemFromProduct(product, {date: $('#foodDate').value, grams, id: cryptoRandomId()});
+    state.foods.push(item);
+    $('#barcodeInput').value = code;
+    status.textContent = `Logged ${item.name} (${item.grams}g).`;
+    save();
+  } catch(err) {
+    status.textContent = err.message || 'Barcode lookup failed. Check your connection or add it as custom food.';
+  }
+}
+async function scanBarcodeFood(){
+  const status = $('#barcodeStatus');
+  const video = $('#barcodeVideo');
+  if(!('BarcodeDetector' in window) || !navigator.mediaDevices?.getUserMedia){
+    status.textContent='Camera barcode scanning is not supported in this browser. Type the barcode number and tap Lookup instead.';
+    return;
+  }
+  let stream;
+  try {
+    const supportedFormats = await BarcodeDetector.getSupportedFormats?.() || [];
+    const preferredFormats = supportedFormats.filter(f => ['ean_13','ean_8','upc_a','upc_e','code_128'].includes(f));
+    const detector = preferredFormats.length ? new BarcodeDetector({formats: preferredFormats}) : new BarcodeDetector();
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    video.srcObject = stream;
+    video.hidden = false;
+    await video.play();
+    status.textContent='Point the camera at the food barcode…';
+    const start = Date.now();
+    const tick = async () => {
+      if(Date.now() - start > 20000) throw new Error('No barcode detected. Try better light or enter the number manually.');
+      const barcodes = await detector.detect(video);
+      if(barcodes.length){
+        const code = barcodes[0].rawValue;
+        stream.getTracks().forEach(t=>t.stop());
+        video.hidden = true;
+        await lookupBarcodeFood(code);
+      } else {
+        requestAnimationFrame(() => tick().catch(err => { status.textContent=err.message; stream?.getTracks().forEach(t=>t.stop()); video.hidden=true; }));
+      }
+    };
+    await tick();
+  } catch(err) {
+    status.textContent = err.message || 'Could not start barcode scanning.';
+    stream?.getTracks().forEach(t=>t.stop());
+    video.hidden = true;
+  }
+}
 function addCustomFood(){
   const data = {
     id: cryptoRandomId(),
